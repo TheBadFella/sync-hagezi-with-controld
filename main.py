@@ -48,12 +48,11 @@ FOLDER_URLS = [
     "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/controld/badware-hoster-folder.json",
     "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/controld/native-tracker-amazon-folder.json",
     "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/controld/native-tracker-microsoft-folder.json",
-    "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/controld/native-tracker-tiktok-aggressive-folder.json",
-    "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/controld/referral-allow-folder.json",
+    "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/controld/native-tracker-samsung-folder.json",
+    "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/controld/native-tracker-tiktok-folder.json",
     "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/controld/spam-idns-folder.json",
     "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/controld/spam-tlds-allow-folder.json",
     "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/controld/spam-tlds-folder.json",
-    "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/controld/ultimate-known_issues-allow-folder.json",
 ]
 
 BATCH_SIZE = 500
@@ -324,7 +323,8 @@ def sync_profile(profile_id: str) -> bool:
         # Get existing folders and delete target folders
         existing_folders = list_existing_folders(profile_id)
         for folder_data in folder_data_list:
-            name = folder_data["group"]["group"].strip()
+            raw_name = folder_data["group"]["group"].strip()
+            name = f"Hagezi - {raw_name}"
             if name in existing_folders:
                 delete_folder(profile_id, name, existing_folders[name])
         
@@ -335,7 +335,8 @@ def sync_profile(profile_id: str) -> bool:
         success_count = 0
         for folder_data in folder_data_list:
             grp = folder_data["group"]
-            name = grp["group"].strip()
+            raw_name = grp["group"].strip()
+            name = f"Hagezi - {raw_name}"
             do = grp["action"]["do"]
             status = grp["action"]["status"]
             hostnames = [r["PK"] for r in folder_data.get("rules", []) if r.get("PK")]
