@@ -1,19 +1,29 @@
 name: Sync
 
 on:
-  # Daily at 02:00 UTC
   schedule:
-    - cron: "0 2 * * *"
-  # Manual trigger
+    - cron: "0 12 * * *"  # 6:00 AM (your time)
+    - cron: "0 22 * * *"  # 4:00 PM (your time)
+    - cron: "0 4 * * *"   # 10:00 PM (your time)
   workflow_dispatch:
 
 jobs:
   sync:
     runs-on: ubuntu-latest
-
+    outputs:
+      start_time: ${{ steps.start.outputs.now }}
+      commit_sha: ${{ steps.commit.outputs.sha }}
     steps:
+      - name: Record start time
+        id: start
+        run: echo "now=$(date -u +%s)" >> "$GITHUB_OUTPUT"
+
       - name: Checkout repo
         uses: actions/checkout@v4
+
+      - name: Save commit SHA
+        id: commit
+        run: echo "sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Install uv
         uses: astral-sh/setup-uv@v6
@@ -28,3 +38,57 @@ jobs:
           TOKEN: ${{ secrets.TOKEN }}
           PROFILE: ${{ secrets.PROFILE }}
         run: uv run python main.py
+
+  notify:
+    runs-on: ubuntu-latest
+    needs: sync
+    if: always()
+    steps:
+      - name: Notify Discord
+        env:
+          WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK }}
+          START_EPOCH: ${{ needs.sync.outputs.start_time }}
+          COMMIT_SHA: ${{ needs.sync.outputs.commit_sha }}
+        run: |
+          STATUS="${{ needs.sync.result }}"
+          STATUS_ICON="✅"
+          COLOR="3066993"
+          if [ "$STATUS" != "success" ]; then
+            STATUS_ICON="❌"
+            COLOR="15158332"
+          fi
+
+          RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          # Time calculations
+          END_EPOCH=$(date -u +%s)
+          DURATION_SEC=$((END_EPOCH - START_EPOCH))
+          DURATION_FMT=$(printf '%02d:%02d:%02d' $((DURATION_SEC/3600)) $(((DURATION_SEC%3600)/60)) $((DURATION_SEC%60)))
+
+          # Format times
+          START_UTC=$(date -u -d "@$START_EPOCH" +"%Y-%m-%d %H:%M:%S")
+          END_UTC=$(date -u -d "@$END_EPOCH" +"%Y-%m-%d %H:%M:%S")
+
+          # My Time (UTC−6)
+          START_LOCAL_EPOCH=$((START_EPOCH - 21600))
+          END_LOCAL_EPOCH=$((END_EPOCH - 21600))
+          START_LOCAL=$(date -d "@$START_LOCAL_EPOCH" +"%Y-%m-%d %H:%M:%S")
+          END_LOCAL=$(date -d "@$END_LOCAL_EPOCH" +"%Y-%m-%d %H:%M:%S")
+
+          DESCRIPTION=$(
+            echo "**Workflow:** \`${{ github.workflow }}\`" &&
+            echo "**Job:** \`sync\`" &&
+            echo "**Commit:** \`${COMMIT_SHA}\`" &&
+            echo "**⏱ Duration:** ${DURATION_FMT}" &&
+            echo "**🕓 Start:** UTC (${START_UTC}) – My Time (${START_LOCAL})" &&
+            echo "**🏁 End:** UTC (${END_UTC}) – My Time (${END_LOCAL})" &&
+            echo "🔗 [**View on GitHub Actions**](${RUN_URL})"
+          )
+
+          PAYLOAD=$(jq -n \
+            --arg title "${STATUS_ICON} Sync Job - ${STATUS}" \
+            --arg description "$DESCRIPTION" \
+            --argjson color "$COLOR" \
+            '{embeds: [{title: $title, description: $description, color: $color}]}')
+
+          curl -X POST -H "Content-Type: application/json" -d "$PAYLOAD" "$WEBHOOK_URL"
